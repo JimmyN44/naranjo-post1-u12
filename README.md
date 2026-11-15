@@ -1,13 +1,15 @@
 # Post-contenido — Unidad 12: Despliegue y CI/CD
 
-Programación Web — Unidad 12 · Laboratorio post-contenido
+[![CI Status](https://github.com/JimmyN44/naranjo-post1-u12/actions/workflows/ci.yml/badge.svg)](https://github.com/JimmyN44/naranjo-post1-u12/actions/workflows/ci.yml)
+
+Programación Web — Unidad 12 · Laboratorio post-contenido (Parte 1 y Parte 2)
 
 ## 1. Descripción
 
 Repositorio del laboratorio de la Unidad 12 de Programación Web. Contiene la aplicación Spring Boot **`pedidos`** desarrollada en la Unidad 11 —una API REST de gestión de pedidos de una tienda en línea, con paquete raíz `com.tienda.pedidos`— llevada a un flujo real de contenedorización, integración continua y despliegue:
 
 - **Parte 1 — Dockerización con perfiles y variables de entorno:** Dockerfile multi-stage, configuración externalizada con placeholders `${VAR:default}` y separación de los ambientes `dev` y `prod` mediante perfiles de Spring activados por variable de entorno.
-- **Parte 2 — Pipeline CI/CD con GitHub Actions y monitoreo con Actuator** *(pendiente; se documentará en este README al completarla)*: Spring Boot Actuator con exposición diferenciada por perfil, prueba automatizada de contexto, workflow de GitHub Actions que compila, prueba, construye la imagen y verifica con un smoke test que el contenedor responde `UP`, y despliegue manual en una plataforma cloud a partir del mismo Dockerfile.
+- **Parte 2 — Pipeline CI/CD con GitHub Actions y monitoreo con Actuator:** Spring Boot Actuator con exposición diferenciada por perfil, prueba automatizada de contexto, workflow de GitHub Actions que compila, prueba, construye la imagen y verifica con un smoke test que el contenedor responde `UP`, y despliegue manual en una plataforma cloud a partir del mismo Dockerfile.
 
 La lógica de negocio de la Unidad 11 se conserva sin cambios: arquitectura por capas, DTOs, patrón Strategy para el descuento por tipo de cliente, manejo centralizado de errores, logging con SLF4J/Logback y documentación con Swagger UI.
 
@@ -29,6 +31,7 @@ Versiones tomadas del `pom.xml`, del JAR construido y de las imágenes base.
 | Spring Boot | 3.2.12 | Framework base |
 | Spring Web MVC / Tomcat embebido | 6.1.15 / 10.1.33 | API REST |
 | Spring Data JPA + Hibernate | Hibernate 6.4.10.Final | Persistencia |
+| Spring Boot Actuator | 3.2.12 (gestionada por el BOM de Spring Boot) | Monitoreo (`/actuator/health`) |
 | H2 Database | 2.2.224 | Base de datos en memoria (perfil `dev` y pruebas) |
 | Driver PostgreSQL | 42.6.2 | Base de datos externa (perfil `prod`) |
 | springdoc-openapi-starter-webmvc-ui | 2.3.0 | OpenAPI 3 y Swagger UI |
@@ -36,6 +39,7 @@ Versiones tomadas del `pom.xml`, del JAR construido y de las imágenes base.
 | Maven / Maven Wrapper | 3.9.11 / 3.3.4 | Construcción |
 | Imagen de compilación | `maven:3.9.11-eclipse-temurin-17-alpine` | Etapa *builder* del Dockerfile |
 | Imagen de ejecución | `eclipse-temurin:17-jre-alpine` | Etapa final del Dockerfile |
+| GitHub Actions | `actions/checkout@v4`, `actions/setup-java@v4`, `actions/upload-artifact@v4` | Pipeline CI |
 
 ## 4. Arquitectura del proyecto
 
@@ -45,7 +49,10 @@ naranjo-post1-u12/
 ├── Dockerfile                    # build multi-stage (Maven + JDK 17 → JRE 17 Alpine)
 ├── .dockerignore
 ├── .gitignore
-├── capturas/                     # evidencias del laboratorio (ver sección de capturas)
+├── .github/
+│   └── workflows/
+│       └── ci.yml                # pipeline: build-and-test → docker-build (smoke test)
+├── capturas/                     # evidencias del laboratorio (sección 20)
 └── pedidos/                      # proyecto Spring Boot (Unidad 11)
     ├── pom.xml
     ├── mvnw, mvnw.cmd, .mvn/
@@ -65,10 +72,25 @@ naranjo-post1-u12/
         │       ├── application-dev.properties    # perfil dev
         │       ├── application-prod.properties   # perfil prod
         │       └── logback-spring.xml
-        └── test/java/com/tienda/pedidos/         # pruebas de la Unidad 11 (JUnit 5, Mockito, MockMvc)
+        └── test/java/com/tienda/pedidos/
+            ├── ApplicationContextTest.java       # prueba de contexto (Unidad 12)
+            └── ...                               # pruebas de la Unidad 11
 ```
 
 El proyecto Maven vive en la subcarpeta `pedidos/`; el `Dockerfile` está en la raíz y el contexto de build es la raíz del repositorio.
+
+Flujo completo:
+
+```
+git push / pull request a main
+        │
+        ▼
+GitHub Actions ── build-and-test ──(needs)──▶ docker-build
+                  mvn clean verify            docker build → docker run → /actuator/health = UP
+                  reportes Surefire
+
+Railway / Render ── detecta el Dockerfile ──▶ construye la imagen ──▶ ejecuta con perfil prod + PostgreSQL
+```
 
 ### Endpoints de la aplicación
 
@@ -78,6 +100,8 @@ El proyecto Maven vive en la subcarpeta `pedidos/`; el `Dockerfile` está en la 
 | `GET` | `/api/pedidos/{id}` | Consulta un pedido por id (nunca expone `notasInternas`) | `200`, `400`, `404`, `500` |
 | `GET` | `/swagger-ui.html` | Documentación interactiva (Swagger UI) | `200` |
 | `GET` | `/api-docs` | Contrato OpenAPI 3 en JSON | `200` |
+| `GET` | `/actuator/health` | Estado de la aplicación (Actuator) | `200` UP / `503` DOWN |
+| `GET` | `/actuator/info` | Información de la aplicación (Actuator) | `200` |
 | `GET` | `/h2-console` | Consola de H2 (**solo perfil `dev`**) | `200` en dev, `404` en prod |
 
 Cuerpo de ejemplo para `POST /api/pedidos`:
@@ -114,7 +138,7 @@ spring.profiles.active=${SPRING_PROFILES_ACTIVE:dev}
 | SQL en el log (`show-sql`) | Sí | No |
 | Consola H2 (`/h2-console`) | Activa | Desactivada |
 | Logging | `com.tienda.pedidos=DEBUG` | `root=WARN`, `com.tienda.pedidos=INFO` |
-| Actuator *(se agrega en la Parte 2)* | Todos los endpoints, `show-details=always` | Solo `health` e `info`, `show-details=when-authorized` |
+| Actuator | Todos los endpoints, `show-details=always` | Solo `health` e `info`, `show-details=when-authorized` |
 
 ## 7. Variables de entorno
 
@@ -193,6 +217,7 @@ En Docker reciente con el almacén de imágenes de containerd, la columna `DISK 
 ```bash
 docker run -d --name mi-app-dev -p 8080:8080 mi-spring-app:local
 docker logs mi-app-dev | grep "profile is active"     # "dev"
+curl http://localhost:8080/actuator/health
 curl -X POST http://localhost:8080/api/pedidos \
   -H "Content-Type: application/json" \
   -d '{"clienteEmail":"ana@correo.com","tipoCliente":"VIP","subtotal":100000}'
@@ -227,10 +252,183 @@ docker network rm red-u12
 ```
 
 En arranques posteriores se omite `-e JPA_DDL_AUTO=update` y la aplicación valida el esquema existente.
-## Decisiones de diseño (Parte 1)
+
+---
+
+# Parte 2 — Pipeline CI/CD con GitHub Actions y monitoreo con Actuator
+
+## 10. Parte 2: Spring Boot Actuator
+
+Se agregó la dependencia `spring-boot-starter-actuator` sin versión explícita (la gestiona el BOM de Spring Boot 3.2.12). La exposición se diferencia por perfil:
+
+```properties
+# application-dev.properties
+management.endpoints.web.exposure.include=*
+management.endpoint.health.show-details=always
+
+# application-prod.properties
+management.endpoints.web.exposure.include=health,info
+management.endpoint.health.show-details=when-authorized
+```
+
+| Petición | `dev` | `prod` |
+|---|---|---|
+| `GET /actuator/health` | `200` con `status` y detalle de componentes (`db`, `diskSpace`, `ping`) | `200` `{"status":"UP"}` (sin detalles) |
+| `GET /actuator/beans`, `/env`, `/configprops`, `/heapdump`, ... | Expuestos (diagnóstico local) | `404` |
+| `GET /actuator/health` con la base de datos caída | — | `503` `{"status":"DOWN"}` |
+
+En `dev`, `/actuator/env` enmascara los valores sensibles (`******`), comportamiento por defecto de Spring Boot 3.
+
+## 11. Pruebas automatizadas
+
+El proyecto ejecuta **26 pruebas** (JUnit 5) con `mvn clean verify`:
+
+| Clase | Tipo | Pruebas |
+|---|---|---|
+| `ApplicationContextTest` *(Unidad 12)* | Contexto con `@SpringBootTest` + `@ActiveProfiles("dev")` | 4 |
+| `PedidosApplicationTests` | Carga de contexto | 1 |
+| `controller.PedidoControllerIntegrationTest` | Integración de endpoints REST (MockMvc) | 10 |
+| `exception.GlobalExceptionHandlerTest` | `@WebMvcTest` (respuesta 500) | 1 |
+| `service.PedidoServiceImplTest` | Unitarias con Mockito | 7 |
+| `strategy.EstrategiaDescuentoTest` | Unitarias | 3 |
+
+`ApplicationContextTest` verifica con aserciones reales que, con el perfil `dev`:
+
+1. el único perfil activo es `dev` y se cargaron propiedades exclusivas de `application-dev.properties`;
+2. el contexto registra el controlador, el servicio (`PedidoServiceImpl`), el repositorio y exactamente las estrategias `REGULAR`, `VIP` y `MAYORISTA`;
+3. la conexión real a la base de datos es H2 en `jdbc:h2:mem:pedidosdb`;
+4. `GET /actuator/health` responde `200` con `status` `UP` y la base de datos `H2` en `UP`.
+
+Los reportes se generan en `pedidos/target/surefire-reports/`.
+
+## 12. GitHub Actions
+
+Archivo: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+- **Disparadores:** `push` a `main` y `pull_request` hacia `main`.
+- **Permisos:** `contents: read` (solo lectura del repositorio).
+- **Jobs:** `build-and-test` → `docker-build`, encadenados con `needs:`; cada uno con `timeout-minutes: 15`.
+- **Sin registro externo:** no hay `docker push` ni secretos de Docker Hub.
+
+Estado e historial de ejecuciones: pestaña [Actions](https://github.com/JimmyN44/naranjo-post1-u12/actions) del repositorio y badge al inicio de este README.
+
+## 13. Job `build-and-test`
+
+| Paso | Detalle |
+|---|---|
+| Checkout | `actions/checkout@v4` |
+| JDK | `actions/setup-java@v4` con `java-version: "17"`, `distribution: temurin` |
+| Caché Maven | `cache: maven`, clave calculada a partir de `pedidos/pom.xml` |
+| Compilar y probar | `mvn -B -ntp clean verify` en `working-directory: pedidos` |
+| Reportes | `actions/upload-artifact@v4` sube `pedidos/target/surefire-reports/` como artefacto `surefire-reports`, `retention-days: 7`, con `if: always()` para conservarlos también cuando una prueba falla |
+
+## 14. Job `docker-build`
+
+| Paso | Detalle |
+|---|---|
+| Dependencia | `needs: build-and-test`: solo se ejecuta si compilación y pruebas pasaron |
+| Checkout | `actions/checkout@v4` |
+| Construir imagen | `docker build -t mi-spring-app:${{ github.sha }} .` con el mismo Dockerfile de la Parte 1 |
+| Smoke test | Levanta el contenedor y espera `/actuator/health` = `UP` (sección 15) |
+| Limpieza | `docker rm -f smoke-test \|\| true` con `if: always()`: el contenedor se elimina aunque el smoke test falle |
+
+## 15. Smoke test
+
+```bash
+docker run -d --name "$CONTAINER" -p 8080:8080 "$IMAGE"
+
+for i in $(seq 1 15); do
+  if curl -sf --max-time 3 http://localhost:8080/actuator/health | jq -e '.status == "UP"' > /dev/null; then
+    echo "La aplicacion respondio UP (intento ${i}/15):"
+    curl -s http://localhost:8080/actuator/health | jq .
+    exit 0
+  fi
+  if [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER")" != "true" ]; then
+    echo "El contenedor se detuvo antes de responder"
+    break
+  fi
+  echo "Esperando a que la aplicacion arranque... (${i}/15)"
+  sleep 2
+done
+
+echo "La aplicacion no respondio UP a tiempo"
+docker logs "$CONTAINER"
+exit 1
+```
+
+- El contenedor arranca **sin variables**, es decir, con el perfil `dev` y H2 en memoria: no depende de ninguna base de datos ni cuenta externa.
+- Hasta **15 intentos con 2 s** de espera entre ellos; cada petición tiene un límite de 3 s (`--max-time 3`).
+- `curl -f` falla con HTTP ≥ 400 (un health `DOWN` responde `503`) y `jq -e '.status == "UP"'` valida el estado **de primer nivel**. Un `grep '"status":"UP"'` daría un falso positivo, porque en `dev` la respuesta incluye componentes con su propio `"status":"UP"` aunque el estado general fuera `DOWN`.
+- Si el contenedor termina antes de responder, el bucle se corta sin esperar los 30 s.
+- En caso de fallo se imprime `docker logs` y el paso termina con `exit 1`, lo que marca el job en rojo.
+
+## 16. Despliegue en Railway o Render
+
+El despliegue es manual y lo realiza la plataforma a partir del mismo `Dockerfile` de la raíz, con su propio build e independiente de GitHub Actions; el workflow no necesita credenciales de la plataforma.
+
+> **Plataforma utilizada:** _PENDIENTE — indicar Railway o Render._
+
+### Railway
+
+1. Iniciar sesión en railway.com con GitHub y autorizar el acceso al repositorio.
+2. *New Project → Deploy from GitHub repo →* `naranjo-post1-u12`. Rama `main`; *Root Directory* vacío (raíz del repositorio, donde está el `Dockerfile`).
+3. Agregar una base de datos: *Create → Database → PostgreSQL* (servicio `Postgres`).
+4. En el servicio de la aplicación, *Variables → Raw Editor*:
+   ```
+   SPRING_PROFILES_ACTIVE=prod
+   DATASOURCE_URL=jdbc:postgresql://${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+   DATASOURCE_USER=${{Postgres.PGUSER}}
+   DATASOURCE_PASSWORD=${{Postgres.PGPASSWORD}}
+   JPA_DDL_AUTO=update
+   PORT=8080
+   ```
+   Las referencias `${{Postgres.…}}` las resuelve Railway; ninguna credencial se copia ni se versiona.
+5. *Settings → Deploy → Healthcheck Path:* `/actuator/health`. Desplegar y verificar en *Deploy Logs* `The following 1 profile is active: "prod"`.
+6. *Settings → Networking → Generate Domain* (puerto `8080`).
+7. Tras el primer despliegue correcto, eliminar `JPA_DDL_AUTO` para volver a `validate`.
+
+### Render
+
+1. *New → PostgreSQL*; anotar de *Connections* Hostname interno, Port, Database, Username y Password.
+2. *New → Web Service →* repositorio `naranjo-post1-u12`; *Runtime: Docker*, rama `main`, *Root Directory* vacío, misma región que la base de datos.
+3. Variables: `SPRING_PROFILES_ACTIVE=prod`, `DATASOURCE_URL=jdbc:postgresql://<hostname-interno>:<port>/<database>`, `DATASOURCE_USER`, `DATASOURCE_PASSWORD` y `JPA_DDL_AUTO=update` (solo el primer despliegue). Render inyecta `PORT` y la aplicación la respeta.
+4. *Advanced → Health Check Path:* `/actuator/health`.
+
+## 17. URL pública
+
+> **URL de la aplicación:** _PENDIENTE — agregar la URL pública real generada por la plataforma._
+>
+> **Health check:** _PENDIENTE — `<URL pública>/actuator/health`._
+
+## 18. Endpoint `/actuator/health`
+
+Respuesta esperada en producción (perfil `prod`, sin detalles):
+
+```bash
+curl https://<URL-pública>/actuator/health
+```
+
+```json
+{"status":"UP"}
+```
+
+Comprobaciones adicionales en producción:
+
+```bash
+curl -i https://<URL-pública>/actuator/beans      # 404: no expuesto en prod
+curl -X POST https://<URL-pública>/api/pedidos \
+  -H "Content-Type: application/json" \
+  -d '{"clienteEmail":"ana@correo.com","tipoCliente":"VIP","subtotal":100000}'   # 201
+```
+
+Si la base de datos no está disponible, `/actuator/health` responde `503` con `{"status":"DOWN"}`, y el healthcheck de la plataforma lo detecta.
+
+## 19. Decisiones de diseño
+
+### Parte 1
 
 1. **Placeholders con valor por defecto (`${VAR:default}`) en lugar de placeholders estrictos.**
-   Con valores por defecto razonables (H2 en memoria, puerto 8080, perfil `dev`) la misma imagen arranca sin fricción en la máquina del desarrollador, y en las pruebas, sin exportar variables. En producción la plataforma sobrescribe cada variable con su valor real. Las credenciales de producción (`DATASOURCE_USER`, `DATASOURCE_PASSWORD`) son la excepción: no tienen valor por defecto, porque una credencial de producción nunca debe tener un valor utilizable escrito en el código.
+   Con valores por defecto razonables (H2 en memoria, puerto 8080, perfil `dev`) la misma imagen arranca sin fricción en la máquina del desarrollador, en las pruebas y en el smoke test del pipeline, sin exportar variables. En producción la plataforma sobrescribe cada variable con su valor real. Las credenciales de producción (`DATASOURCE_USER`, `DATASOURCE_PASSWORD`) son la excepción: no tienen valor por defecto, porque una credencial de producción nunca debe tener un valor utilizable escrito en el código.
 
 2. **`application-dev.properties` y `application-prod.properties` como archivos separados.**
    En lugar de bloques condicionales (`#---` con `spring.config.activate.on-profile`) en un único archivo, cada ambiente tiene su archivo según la convención `application-{perfil}.properties`. Con solo ver el nombre del archivo queda claro qué configuración corresponde a cada ambiente y se reduce el riesgo de modificar por error una propiedad de producción mientras se trabaja en desarrollo.
@@ -238,12 +436,33 @@ En arranques posteriores se omite `-e JPA_DDL_AUTO=update` y la aplicación vali
 3. **Imagen final `eclipse-temurin:17-jre-alpine` en lugar de una imagen JDK o distroless.**
    Para ejecutar el JAR solo se necesita el JRE: la imagen final no incluye compilador ni Maven, lo que reduce tamaño y superficie de ataque. A diferencia de distroless, Alpine conserva un shell mínimo que permite diagnosticar el contenedor con `docker exec -it <contenedor> sh`. Se usa Java 17 porque es la versión que declara el proyecto; no fue necesario cambiar a Java 21.
 
-## Capturas de pantalla
+### Parte 2
 
-Las capturas se guardan en [`capturas/`](capturas/):
+1. **Prueba de contexto automatizada en lugar de omitir la fase de pruebas.**
+   El proyecto ya traía pruebas de la Unidad 11, pero su prueba de contexto (`contextLoads`) no contenía aserciones y habría pasado sin validar nada. `ApplicationContextTest` obliga a Spring a construir el contexto completo con el perfil `dev` y comprueba con aserciones el perfil activo, los beans de cada capa, la base H2 y la respuesta `UP` de Actuator, así el job `build-and-test` valida algo real antes de que el pipeline avance a Docker.
+
+2. **El job `docker-build` construye y verifica la imagen con un smoke test, pero no la publica en un registro.**
+   Publicar en Docker Hub o GHCR exigiría configurar secretos de una cuenta externa solo para que el pipeline pase. Lo que importa verificar es que la imagen construida arranca y expone su endpoint de monitoreo, y eso se comprueba dentro del propio runner. El despliegue lo hace Railway/Render construyendo desde el mismo Dockerfile, sin que el workflow tenga que autenticarse contra ellas.
+
+3. **Exposición de Actuator diferenciada por perfil.**
+   En `dev` se exponen todos los endpoints con detalles completos para diagnosticar localmente. En `prod` solo `health` e `info`, y `health` sin detalles (`when-authorized`, sin usuarios autorizados): endpoints como `env`, `configprops`, `beans` o `heapdump` podrían revelar configuración, variables de entorno o memoria de la aplicación, por eso responden `404`.
+
+## 20. Capturas de evidencia
+
+Las capturas se guardan en [`capturas/`](capturas/) con estos nombres:
 
 | Archivo | Qué debe mostrar |
 |---|---|
 | `capturas/docker-images.png` | La imagen `mi-spring-app:local` construida localmente (`docker images mi-spring-app`) |
-| `capturas/docker-dev.png` | Contenedor en perfil `dev`: log con `profile is active: "dev"` y respuesta del endpoint REST |
-| `capturas/docker-prod.png` | Contenedor en perfil `prod`: log con `profile is active: "prod"` y la aplicación iniciada con PostgreSQL |
+| `capturas/actuator-health-local.png` | `/actuator/health` respondiendo `UP` con el contenedor en local |
+| `capturas/github-actions.png` | Historial de la pestaña Actions con ejecuciones exitosas (checks verdes) |
+| `capturas/smoke-test-log.png` | Log del paso *"Levantar el contenedor y esperar /actuator/health"* con el mensaje `La aplicacion respondio UP` |
+| `capturas/railway-panel.png` *(o `render-panel.png`)* | Panel de la plataforma con el despliegue activo |
+| `capturas/railway-health.png` *(o `render-health.png`)* | `/actuator/health` respondiendo `{"status":"UP"}` en la URL pública |
+
+![Imagen Docker construida localmente](capturas/docker-images.png)
+![Actuator health en local](capturas/actuator-health-local.png)
+![GitHub Actions con checks verdes](capturas/github-actions.png)
+![Smoke test respondiendo UP en el pipeline](capturas/smoke-test-log.png)
+![Panel de la plataforma con el despliegue activo](capturas/railway-panel.png)
+![Endpoint /actuator/health en la URL pública](capturas/railway-health.png)
