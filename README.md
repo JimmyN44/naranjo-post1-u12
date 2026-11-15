@@ -510,7 +510,7 @@ Capturas **reales** del laboratorio, tomadas en el entorno de desarrollo (conten
 
 ### Parte 2 — CI/CD y monitoreo (`docs/evidencias/parte-2-ci-cd-monitoreo/`)
 
-Las capturas 6 a 8 muestran datos reales obtenidos de la API pública de GitHub (`api.github.com`) para el run #1 del workflow; en este entorno los recursos visuales de github.com están bloqueados por la red, por lo que la interfaz web de GitHub no se pudo capturar con estilos.
+Las capturas 6 a 9 muestran datos reales obtenidos de la API pública de GitHub (`api.github.com`) sobre las ejecuciones del workflow; en este entorno los recursos visuales de github.com están bloqueados por la red, por lo que la interfaz web de GitHub no se pudo capturar con estilos.
 
 | # | Checkpoint | Captura |
 |---|---|---|
@@ -522,6 +522,7 @@ Las capturas 6 a 8 muestran datos reales obtenidos de la API pública de GitHub 
 | 6 | Job `build-and-test` exitoso (run #1): pasos, `Tests run: 26`, BUILD SUCCESS, artefacto `surefire-reports` y caché de Maven | [`06-job-build-and-test-exitoso.png`](docs/evidencias/parte-2-ci-cd-monitoreo/06-job-build-and-test-exitoso.png) |
 | 7 | Job `docker-build` exitoso tras `build-and-test` (`needs`), con la imagen `mi-spring-app:<sha>` construida | [`07-job-docker-build-exitoso.png`](docs/evidencias/parte-2-ci-cd-monitoreo/07-job-docker-build-exitoso.png) |
 | 8 | Log real del smoke test en el runner: espera, `La aplicacion respondio UP (intento 5/15)` y limpieza del contenedor | [`08-smoke-test-log.png`](docs/evidencias/parte-2-ci-cd-monitoreo/08-smoke-test-log.png) |
+| 9 | Tres ejecuciones exitosas del workflow en `main` (runs #1, #2 y #3), cada una con `build-and-test` y `docker-build` en `success` | [`09-tres-ejecuciones-pipeline.png`](docs/evidencias/parte-2-ci-cd-monitoreo/09-tres-ejecuciones-pipeline.png) |
 
 **P2-01.** Dependencia `spring-boot-starter-actuator` (versión del BOM, 3.2.12) y configuración `management.*` por perfil
 
@@ -555,11 +556,14 @@ Las capturas 6 a 8 muestran datos reales obtenidos de la API pública de GitHub 
 
 ![P2-08 smoke-test-log](docs/evidencias/parte-2-ci-cd-monitoreo/08-smoke-test-log.png)
 
+**P2-09.** Tres ejecuciones exitosas del workflow en `main` (runs #1, #2 y #3), cada una con `build-and-test` y `docker-build` en `success`
+
+![P2-09 tres-ejecuciones-pipeline](docs/evidencias/parte-2-ci-cd-monitoreo/09-tres-ejecuciones-pipeline.png)
+
 ### Evidencias pendientes
 
 | Checkpoint | Estado | Cómo obtenerla |
 |---|---|---|
-| P2-09 Tres ejecuciones exitosas del pipeline | Se agrega cuando existan tres ejecuciones completadas con éxito | Consulta a la API pública de GitHub o pestaña **Actions** del repositorio |
 | P2-10 Aplicación desplegada en Railway o Render | **Pendiente (manual)** — sin acceso a la plataforma desde este entorno | Captura del panel del servicio con el despliegue activo |
 | P2-11 URL pública respondiendo `{"status":"UP"}` | **Pendiente (manual)** — no hay URL pública registrada | Abrir `https://<URL-pública>/actuator/health` en el navegador con la URL visible |
 | P2-12 README con el badge de GitHub Actions en GitHub | **Pendiente (manual)** — la interfaz de github.com no se renderiza en este entorno | Captura de la página principal del repositorio con el badge visible |
