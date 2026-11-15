@@ -507,3 +507,59 @@ Capturas **reales** del laboratorio, tomadas en el entorno de desarrollo (conten
 **P1-10.** Estructura de archivos versionados; `target/` y `logs/` ignorados
 
 ![P1-10 estructura-proyecto](docs/evidencias/parte-1-dockerizacion/10-estructura-proyecto.png)
+
+### Parte 2 — CI/CD y monitoreo (`docs/evidencias/parte-2-ci-cd-monitoreo/`)
+
+Las capturas 6 a 8 muestran datos reales obtenidos de la API pública de GitHub (`api.github.com`) para el run #1 del workflow; en este entorno los recursos visuales de github.com están bloqueados por la red, por lo que la interfaz web de GitHub no se pudo capturar con estilos.
+
+| # | Checkpoint | Captura |
+|---|---|---|
+| 1 | Dependencia `spring-boot-starter-actuator` (versión del BOM, 3.2.12) y configuración `management.*` por perfil | [`01-actuator-dependencia-configuracion.png`](docs/evidencias/parte-2-ci-cd-monitoreo/01-actuator-dependencia-configuracion.png) |
+| 2 | `/actuator/health` en Chromium: `dev` (puerto 8080) con detalle de componentes y `prod` (puerto 8081) `{"status":"UP"}` | [`02-actuator-health-navegador-dev-prod.png`](docs/evidencias/parte-2-ci-cd-monitoreo/02-actuator-health-navegador-dev-prod.png) |
+| 3 | Exposición diferenciada: en `dev` todos los endpoints responden 200; en `prod` solo `health` e `info`, el resto 404 | [`03-actuator-exposicion-dev-vs-prod.png`](docs/evidencias/parte-2-ci-cd-monitoreo/03-actuator-exposicion-dev-vs-prod.png) |
+| 4 | `mvn clean verify`: 26 pruebas, 0 fallos, BUILD SUCCESS y reportes de Surefire | [`04-pruebas-mvn-clean-verify.png`](docs/evidencias/parte-2-ci-cd-monitoreo/04-pruebas-mvn-clean-verify.png) |
+| 5 | Workflow `.github/workflows/ci.yml` completo | [`05-workflow-ci-yml.png`](docs/evidencias/parte-2-ci-cd-monitoreo/05-workflow-ci-yml.png) |
+| 6 | Job `build-and-test` exitoso (run #1): pasos, `Tests run: 26`, BUILD SUCCESS, artefacto `surefire-reports` y caché de Maven | [`06-job-build-and-test-exitoso.png`](docs/evidencias/parte-2-ci-cd-monitoreo/06-job-build-and-test-exitoso.png) |
+| 7 | Job `docker-build` exitoso tras `build-and-test` (`needs`), con la imagen `mi-spring-app:<sha>` construida | [`07-job-docker-build-exitoso.png`](docs/evidencias/parte-2-ci-cd-monitoreo/07-job-docker-build-exitoso.png) |
+| 8 | Log real del smoke test en el runner: espera, `La aplicacion respondio UP (intento 5/15)` y limpieza del contenedor | [`08-smoke-test-log.png`](docs/evidencias/parte-2-ci-cd-monitoreo/08-smoke-test-log.png) |
+
+**P2-01.** Dependencia `spring-boot-starter-actuator` (versión del BOM, 3.2.12) y configuración `management.*` por perfil
+
+![P2-01 actuator-dependencia-configuracion](docs/evidencias/parte-2-ci-cd-monitoreo/01-actuator-dependencia-configuracion.png)
+
+**P2-02.** `/actuator/health` en Chromium: `dev` (puerto 8080) con detalle de componentes y `prod` (puerto 8081) `{"status":"UP"}`
+
+![P2-02 actuator-health-navegador-dev-prod](docs/evidencias/parte-2-ci-cd-monitoreo/02-actuator-health-navegador-dev-prod.png)
+
+**P2-03.** Exposición diferenciada: en `dev` todos los endpoints responden 200; en `prod` solo `health` e `info`, el resto 404
+
+![P2-03 actuator-exposicion-dev-vs-prod](docs/evidencias/parte-2-ci-cd-monitoreo/03-actuator-exposicion-dev-vs-prod.png)
+
+**P2-04.** `mvn clean verify`: 26 pruebas, 0 fallos, BUILD SUCCESS y reportes de Surefire
+
+![P2-04 pruebas-mvn-clean-verify](docs/evidencias/parte-2-ci-cd-monitoreo/04-pruebas-mvn-clean-verify.png)
+
+**P2-05.** Workflow `.github/workflows/ci.yml` completo
+
+![P2-05 workflow-ci-yml](docs/evidencias/parte-2-ci-cd-monitoreo/05-workflow-ci-yml.png)
+
+**P2-06.** Job `build-and-test` exitoso (run #1): pasos, `Tests run: 26`, BUILD SUCCESS, artefacto `surefire-reports` y caché de Maven
+
+![P2-06 job-build-and-test-exitoso](docs/evidencias/parte-2-ci-cd-monitoreo/06-job-build-and-test-exitoso.png)
+
+**P2-07.** Job `docker-build` exitoso tras `build-and-test` (`needs`), con la imagen `mi-spring-app:<sha>` construida
+
+![P2-07 job-docker-build-exitoso](docs/evidencias/parte-2-ci-cd-monitoreo/07-job-docker-build-exitoso.png)
+
+**P2-08.** Log real del smoke test en el runner: espera, `La aplicacion respondio UP (intento 5/15)` y limpieza del contenedor
+
+![P2-08 smoke-test-log](docs/evidencias/parte-2-ci-cd-monitoreo/08-smoke-test-log.png)
+
+### Evidencias pendientes
+
+| Checkpoint | Estado | Cómo obtenerla |
+|---|---|---|
+| P2-09 Tres ejecuciones exitosas del pipeline | Se agrega cuando existan tres ejecuciones completadas con éxito | Consulta a la API pública de GitHub o pestaña **Actions** del repositorio |
+| P2-10 Aplicación desplegada en Railway o Render | **Pendiente (manual)** — sin acceso a la plataforma desde este entorno | Captura del panel del servicio con el despliegue activo |
+| P2-11 URL pública respondiendo `{"status":"UP"}` | **Pendiente (manual)** — no hay URL pública registrada | Abrir `https://<URL-pública>/actuator/health` en el navegador con la URL visible |
+| P2-12 README con el badge de GitHub Actions en GitHub | **Pendiente (manual)** — la interfaz de github.com no se renderiza en este entorno | Captura de la página principal del repositorio con el badge visible |
