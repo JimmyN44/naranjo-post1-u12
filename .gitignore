@@ -1,0 +1,46 @@
+# Compilacion Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+# Logs de la aplicacion (logs/pedidos.log)
+logs/
+*.log
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# VS Code
+.vscode/
+
+# Eclipse / STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Variables de entorno y claves locales (nunca se versionan)
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.jks
+application-local*.properties

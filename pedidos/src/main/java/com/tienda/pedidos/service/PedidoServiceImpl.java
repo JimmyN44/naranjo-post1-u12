@@ -1,0 +1,93 @@
+package com.tienda.pedidos.service;
+
+import com.tienda.pedidos.dto.PedidoRequestDTO;
+import com.tienda.pedidos.dto.PedidoResponseDTO;
+import com.tienda.pedidos.entity.Pedido;
+import com.tienda.pedidos.exception.RecursoNoEncontradoException;
+import com.tienda.pedidos.repository.PedidoRepository;
+import com.tienda.pedidos.strategy.EstrategiaDescuento;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+
+@Service
+public class PedidoServiceImpl implements PedidoService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(PedidoServiceImpl.class);
+
+    private final PedidoRepository repo;
+    private final NotificacionService notificador;
+    private final Map<String, EstrategiaDescuento> estrategias;
+
+    public PedidoServiceImpl(PedidoRepository repo,
+                             NotificacionService notificador,
+                             Map<String, EstrategiaDescuento> estrategias) {
+        this.repo        = repo;
+        this.notificador = notificador;
+        this.estrategias = estrategias;
+    }
+
+    @Override
+    public PedidoResponseDTO crear(PedidoRequestDTO dto) {
+        log.info("Creando pedido: clienteEmail={}, tipoCliente={}",
+                dto.getClienteEmail(), dto.getTipoCliente());
+        String tipoCliente = dto.getTipoCliente().toUpperCase();
+        if (!estrategias.containsKey(tipoCliente)) {
+            log.warn("Tipo de cliente desconocido tipoCliente={}, se aplica la estrategia REGULAR", tipoCliente);
+        }
+        EstrategiaDescuento estrategia = estrategias.getOrDefault(
+                tipoCliente, estrategias.get("REGULAR"));
+        double descuento = estrategia.calcularDescuento(dto.getSubtotal());
+        log.info("Descuento aplicado: pedido para clienteEmail={}, tipoCliente={}, descuento={}",
+                dto.getClienteEmail(), tipoCliente, descuento);
+        double baseConDescuento = dto.getSubtotal() - descuento;
+        double iva = baseConDescuento * 0.19;
+        double total = baseConDescuento + iva;
+
+        Pedido pedido = new Pedido();
+        pedido.setClienteEmail(dto.getClienteEmail());
+        pedido.setTipoCliente(tipoCliente);
+        pedido.setSubtotal(dto.getSubtotal());
+        pedido.setDescuento(descuento);
+        pedido.setIva(iva);
+        pedido.setTotal(total);
+        pedido.setEstado("CREADO");
+        pedido.setNotasInternas("Pedido creado automaticamente, revisar stock antes de despachar");
+        pedido.setFechaCreacion(LocalDateTime.now());
+
+        Pedido guardado = repo.save(pedido);
+        log.info("Pedido creado exitosamente con id={}, tipoCliente={}, descuento={}, total={}",
+                guardado.getId(), guardado.getTipoCliente(), guardado.getDescuento(), guardado.getTotal());
+        notificador.enviarConfirmacion(guardado.getClienteEmail(), guardado.getTotal());
+        return toResponseDTO(guardado);
+    }
+
+    @Override
+    public PedidoResponseDTO buscarPorId(Long id) {
+        log.debug("Buscando pedido con id={}", id);
+        Pedido p = repo.findById(id).orElseThrow(() -> {
+            log.warn("Pedido con id={} no encontrado", id);
+            return new RecursoNoEncontradoException("Pedido", id);
+        });
+        log.debug("Pedido con id={} encontrado, estado={}", p.getId(), p.getEstado());
+        return toResponseDTO(p);
+    }
+
+    private PedidoResponseDTO toResponseDTO(Pedido p) {
+        PedidoResponseDTO dto = new PedidoResponseDTO();
+        dto.setId(p.getId());
+        dto.setClienteEmail(p.getClienteEmail());
+        dto.setTipoCliente(p.getTipoCliente());
+        dto.setSubtotal(p.getSubtotal());
+        dto.setDescuento(p.getDescuento());
+        dto.setIva(p.getIva());
+        dto.setTotal(p.getTotal());
+        dto.setEstado(p.getEstado());
+        return dto;
+    }
+}
