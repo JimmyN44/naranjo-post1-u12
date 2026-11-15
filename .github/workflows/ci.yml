@@ -1,0 +1,117 @@
+# =====================================================================
+# Pipeline de integracion continua - Unidad 12
+#
+# Job 1 (build-and-test): compila el proyecto Maven de pedidos/ y ejecuta
+#   las pruebas automatizadas; publica los reportes de Surefire.
+# Job 2 (docker-build):   solo si el job 1 pasa, construye la imagen con el
+#   Dockerfile de la raiz, la levanta en el propio runner y verifica con un
+#   smoke test que /actuator/health responde UP.
+#
+# La imagen NO se publica en ningun registro (sin docker push ni secretos de
+# Docker Hub): el despliegue lo hace Railway/Render desde el mismo Dockerfile.
+# =====================================================================
+name: CI - Build, Test & Docker Image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# El workflow solo necesita leer el repositorio.
+permissions:
+  contents: read
+
+jobs:
+  # ── Job 1: compilar y ejecutar pruebas ───────────────────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    # Limite de tiempo: si algo se cuelga, el job falla en vez de consumir
+    # minutos hasta el maximo por defecto de GitHub (6 horas).
+    timeout-minutes: 15
+    defaults:
+      run:
+        # El proyecto Maven vive en la subcarpeta pedidos/
+        working-directory: pedidos
+    steps:
+      - name: Checkout del codigo
+        uses: actions/checkout@v4
+
+      # JDK 17: la version declarada en pom.xml (<java.version>17</java.version>).
+      # cache: maven guarda ~/.m2/repository entre ejecuciones; la clave se
+      # calcula a partir de pedidos/pom.xml.
+      - name: Configurar JDK 17 con cache Maven
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: maven
+          cache-dependency-path: pedidos/pom.xml
+
+      # verify compila, ejecuta todas las pruebas (incluida ApplicationContextTest
+      # con el perfil dev y H2 en memoria) y empaqueta el JAR.
+      # -ntp (--no-transfer-progress) evita miles de lineas de descarga en el log.
+      - name: Compilar y ejecutar pruebas
+        run: mvn -B -ntp clean verify
+
+      # if: always() conserva los reportes aunque alguna prueba falle,
+      # que es justamente cuando mas se necesitan.
+      - name: Publicar reporte de pruebas como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: pedidos/target/surefire-reports/
+          retention-days: 7
+
+  # ── Job 2: construir la imagen y verificar el monitoreo ──────────────
+  docker-build:
+    runs-on: ubuntu-latest
+    # Solo se ejecuta si build-and-test termino con exito.
+    needs: build-and-test
+    timeout-minutes: 15
+    env:
+      IMAGE: mi-spring-app:${{ github.sha }}
+      CONTAINER: smoke-test
+    steps:
+      - name: Checkout del codigo
+        uses: actions/checkout@v4
+
+      # Mismo Dockerfile multi-stage de la Parte 1 (contexto = raiz del repo).
+      - name: Construir la imagen Docker
+        run: docker build -t "$IMAGE" .
+
+      # Sin variables de entorno el contenedor arranca con el perfil dev
+      # (H2 en memoria), por lo que no necesita ninguna base de datos externa.
+      # Se consulta /actuator/health hasta 15 veces, con 2 s entre intentos.
+      # curl -f falla con HTTP >= 400 (health DOWN responde 503) y jq valida
+      # el campo "status" de primer nivel, no el de algun componente.
+      # --max-time 3 acota cada intento: una conexion colgada no puede alargar
+      # la espera mas alla de 15 intentos x (3 s + 2 s).
+      - name: Levantar el contenedor y esperar /actuator/health
+        run: |
+          docker run -d --name "$CONTAINER" -p 8080:8080 "$IMAGE"
+
+          for i in $(seq 1 15); do
+            if curl -sf --max-time 3 http://localhost:8080/actuator/health | jq -e '.status == "UP"' > /dev/null; then
+              echo "La aplicacion respondio UP (intento ${i}/15):"
+              curl -s http://localhost:8080/actuator/health | jq .
+              exit 0
+            fi
+            # Si el contenedor ya termino, no tiene sentido seguir esperando.
+            if [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER")" != "true" ]; then
+              echo "El contenedor se detuvo antes de responder"
+              break
+            fi
+            echo "Esperando a que la aplicacion arranque... (${i}/15)"
+            sleep 2
+          done
+
+          echo "La aplicacion no respondio UP a tiempo"
+          docker logs "$CONTAINER"
+          exit 1
+
+      # Se ejecuta siempre, tambien si el smoke test fallo.
+      - name: Detener el contenedor de prueba
+        if: always()
+        run: docker rm -f "$CONTAINER" || true
