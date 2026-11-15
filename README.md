@@ -52,7 +52,7 @@ naranjo-post1-u12/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                # pipeline: build-and-test → docker-build (smoke test)
-├── capturas/                     # evidencias del laboratorio (sección 20)
+├── docs/evidencias/              # capturas de evidencia por parte (sección 20)
 └── pedidos/                      # proyecto Spring Boot (Unidad 11)
     ├── pom.xml
     ├── mvnw, mvnw.cmd, .mvn/
@@ -447,22 +447,63 @@ Si la base de datos no está disponible, `/actuator/health` responde `503` con `
 3. **Exposición de Actuator diferenciada por perfil.**
    En `dev` se exponen todos los endpoints con detalles completos para diagnosticar localmente. En `prod` solo `health` e `info`, y `health` sin detalles (`when-authorized`, sin usuarios autorizados): endpoints como `env`, `configprops`, `beans` o `heapdump` podrían revelar configuración, variables de entorno o memoria de la aplicación, por eso responden `404`.
 
-## 20. Capturas de evidencia
+## 20. Evidencias
 
-Las capturas se guardan en [`capturas/`](capturas/) con estos nombres:
+Capturas **reales** del laboratorio, tomadas en el entorno de desarrollo (contenedor Linux en la nube) con herramientas reales: una terminal `xterm` (servidor gráfico Xvfb) capturada con ImageMagick, el navegador Chromium y la API pública de GitHub para los datos del pipeline. Ninguna imagen es generada ni editada; la fecha y hora UTC de cada captura aparece en su primera línea. Las contraseñas de prueba se leen de archivos `--env-file` y se muestran enmascaradas (`********`).
 
-| Archivo | Qué debe mostrar |
-|---|---|
-| `capturas/docker-images.png` | La imagen `mi-spring-app:local` construida localmente (`docker images mi-spring-app`) |
-| `capturas/actuator-health-local.png` | `/actuator/health` respondiendo `UP` con el contenedor en local |
-| `capturas/github-actions.png` | Historial de la pestaña Actions con ejecuciones exitosas (checks verdes) |
-| `capturas/smoke-test-log.png` | Log del paso *"Levantar el contenedor y esperar /actuator/health"* con el mensaje `La aplicacion respondio UP` |
-| `capturas/railway-panel.png` *(o `render-panel.png`)* | Panel de la plataforma con el despliegue activo |
-| `capturas/railway-health.png` *(o `render-health.png`)* | `/actuator/health` respondiendo `{"status":"UP"}` en la URL pública |
+### Parte 1 — Dockerización (`docs/evidencias/parte-1-dockerizacion/`)
 
-![Imagen Docker construida localmente](capturas/docker-images.png)
-![Actuator health en local](capturas/actuator-health-local.png)
-![GitHub Actions con checks verdes](capturas/github-actions.png)
-![Smoke test respondiendo UP en el pipeline](capturas/smoke-test-log.png)
-![Panel de la plataforma con el despliegue activo](capturas/railway-panel.png)
-![Endpoint /actuator/health en la URL pública](capturas/railway-health.png)
+| # | Checkpoint | Captura |
+|---|---|---|
+| 1 | Configuración base: `server.port=${PORT:8080}` y `spring.profiles.active=${SPRING_PROFILES_ACTIVE:dev}` | [`01-application-properties.png`](docs/evidencias/parte-1-dockerizacion/01-application-properties.png) |
+| 2 | Perfil `dev`: H2 en memoria y placeholders con valor por defecto | [`02-perfil-dev-properties.png`](docs/evidencias/parte-1-dockerizacion/02-perfil-dev-properties.png) |
+| 3 | Perfil `prod`: PostgreSQL, credenciales solo por variables de entorno, `ddl-auto` `validate` | [`03-perfil-prod-properties.png`](docs/evidencias/parte-1-dockerizacion/03-perfil-prod-properties.png) |
+| 4 | Dockerfile multi-stage (Maven + JDK 17 → JRE 17 Alpine, usuario no root, `ENTRYPOINT java -jar`) | [`04-dockerfile-multi-stage.png`](docs/evidencias/parte-1-dockerizacion/04-dockerfile-multi-stage.png) |
+| 5 | Archivo `.dockerignore` | [`05-dockerignore.png`](docs/evidencias/parte-1-dockerizacion/05-dockerignore.png) |
+| 6 | Construcción de la imagen, `docker images` y tamaño de las capas (246.6 MB) ¹ | [`06-docker-build-imagen.png`](docs/evidencias/parte-1-dockerizacion/06-docker-build-imagen.png) |
+| 7 | Contenedor en ejecución: `docker ps`, usuario `spring`, sin `javac` ni `mvn`, `ENTRYPOINT` | [`07-contenedor-en-ejecucion.png`](docs/evidencias/parte-1-dockerizacion/07-contenedor-en-ejecucion.png) |
+| 8 | Perfil `dev` activo con H2: `POST` 201, `GET` 200, `GET` inexistente 404, 0 errores en el log | [`08-perfil-dev-respuesta-api.png`](docs/evidencias/parte-1-dockerizacion/08-perfil-dev-respuesta-api.png) |
+| 9 | Perfil `prod` activo con PostgreSQL 16 local de prueba: `POST` 201, fila en la tabla `pedido`, consola H2 404 | [`09-perfil-prod-postgresql.png`](docs/evidencias/parte-1-dockerizacion/09-perfil-prod-postgresql.png) |
+| 10 | Estructura de archivos versionados; `target/` y `logs/` ignorados | [`10-estructura-proyecto.png`](docs/evidencias/parte-1-dockerizacion/10-estructura-proyecto.png) |
+
+¹ La red de este entorno inspecciona TLS, por lo que la imagen se construyó con una copia del Dockerfile que solo añade 2 líneas en la etapa *builder* para confiar en esa CA (visible en la propia captura); la etapa final es idéntica. En GitHub Actions la imagen se construye con el `Dockerfile` original del repositorio.
+
+**P1-01.** Configuración base: `server.port=${PORT:8080}` y `spring.profiles.active=${SPRING_PROFILES_ACTIVE:dev}`
+
+![P1-01 application-properties](docs/evidencias/parte-1-dockerizacion/01-application-properties.png)
+
+**P1-02.** Perfil `dev`: H2 en memoria y placeholders con valor por defecto
+
+![P1-02 perfil-dev-properties](docs/evidencias/parte-1-dockerizacion/02-perfil-dev-properties.png)
+
+**P1-03.** Perfil `prod`: PostgreSQL, credenciales solo por variables de entorno, `ddl-auto` `validate`
+
+![P1-03 perfil-prod-properties](docs/evidencias/parte-1-dockerizacion/03-perfil-prod-properties.png)
+
+**P1-04.** Dockerfile multi-stage (Maven + JDK 17 → JRE 17 Alpine, usuario no root, `ENTRYPOINT java -jar`)
+
+![P1-04 dockerfile-multi-stage](docs/evidencias/parte-1-dockerizacion/04-dockerfile-multi-stage.png)
+
+**P1-05.** Archivo `.dockerignore`
+
+![P1-05 dockerignore](docs/evidencias/parte-1-dockerizacion/05-dockerignore.png)
+
+**P1-06.** Construcción de la imagen, `docker images` y tamaño de las capas (246.6 MB) ¹
+
+![P1-06 docker-build-imagen](docs/evidencias/parte-1-dockerizacion/06-docker-build-imagen.png)
+
+**P1-07.** Contenedor en ejecución: `docker ps`, usuario `spring`, sin `javac` ni `mvn`, `ENTRYPOINT`
+
+![P1-07 contenedor-en-ejecucion](docs/evidencias/parte-1-dockerizacion/07-contenedor-en-ejecucion.png)
+
+**P1-08.** Perfil `dev` activo con H2: `POST` 201, `GET` 200, `GET` inexistente 404, 0 errores en el log
+
+![P1-08 perfil-dev-respuesta-api](docs/evidencias/parte-1-dockerizacion/08-perfil-dev-respuesta-api.png)
+
+**P1-09.** Perfil `prod` activo con PostgreSQL 16 local de prueba: `POST` 201, fila en la tabla `pedido`, consola H2 404
+
+![P1-09 perfil-prod-postgresql](docs/evidencias/parte-1-dockerizacion/09-perfil-prod-postgresql.png)
+
+**P1-10.** Estructura de archivos versionados; `target/` y `logs/` ignorados
+
+![P1-10 estructura-proyecto](docs/evidencias/parte-1-dockerizacion/10-estructura-proyecto.png)
